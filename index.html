@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <meta charset="UTF-8" />
+  <title>Geolocation API (cell)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+    integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+    crossorigin=""
+  />
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"
+  />
+  <style>
+    #formid {
+      padding-bottom: 10px;
+    }
+    #mapid {
+      height: 640px;
+    }
+  </style>
+  <script
+    src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+    integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+    crossorigin=""
+  ></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+  <body>
+    <div>
+      <form id="formid">
+        <label for="mcc">MCC:</label>
+        <input type="text" name="mcc" value="255" />
+        <label for="mnc">MNC:</label>
+        <input type="text" name="mnc" value="1" />
+        <label for="lac">LAC:</label>
+        <input type="text" name="lac" value="1050" />
+        <label for="cid">CID:</label>
+        <input type="text" name="cid" value="6741" />
+        <button type="submit">Search</button>
+      </form>
+    </div>
+    <div id="mapid"></div>
+  </body>
+  <script>
+    const osm = L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }
+    );
+
+    const mapboxStreets = L.tileLayer(
+      "https://api.mapbox.com/styles/v1/{id}/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw",
+      {
+        maxZoom: 18,
+        attribution:
+          'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, ' +
+          'Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
+        id: "mapbox/streets-v11",
+        tileSize: 512,
+        zoomOffset: -1,
+      }
+    );
+
+    const map = L.map("mapid", {
+      center: [50.4501, 30.5234],
+      zoom: 12,
+      layers: [osm],
+    });
+    const baseLayers = {
+      OSM: osm,
+      "Mapbox Streets": mapboxStreets,
+    };
+    L.control.layers(baseLayers).addTo(map);
+    const layerGroup = L.layerGroup().addTo(map);
+
+    const colors = {
+      yandex: "orange",
+      opencellid: "red",
+      opencellid_db: "red",
+      cell2gps: "purple",
+      clf_db: "green",
+      mylnikov: "blue",
+      mylnikov_open: "blue",
+    };
+
+    const populateMap = (cell, data) => {
+      const layers = [];
+      data.forEach((element) => {
+        let latlng = L.latLng(element.latitude, element.longitude);
+        let color = colors[element.source] || "gray";
+        let icon = L.AwesomeMarkers.icon({
+          markerColor: color,
+        });
+        let marker = L.marker(latlng, { icon, title: element.source }).addTo(
+          layerGroup
+        );
+        layers.push(marker);
+        marker.bindPopup(
+          `<b>${element.source}</b>${
+            element.accuracy
+              ? "</br>accuracy: " + element.accuracy + " (m)"
+              : ""
+          }`
+        );
+        if (element.accuracy) {
+          let circle = L.circle(latlng, {
+            color,
+            fillOpacity: 0.2,
+            radius: element.accuracy,
+          }).addTo(layerGroup);
+          layers.push(circle);
+        }
+      });
+      let group = L.featureGroup(layers).addTo(map);
+      map.panInsideBounds(group.getBounds());
+    };
+
+    document.querySelector("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      let cell = {
+        mcc: parseInt(formData.get("mcc")),
+        mnc: parseInt(formData.get("mnc")),
+        lac: parseInt(formData.get("lac")),
+        cid: parseInt(formData.get("cid")),
+      };
+      layerGroup.clearLayers();
+      try {
+        let res = await axios.get(
+          `http://localhost:3000/api/v1?mcc=${cell.mcc}&mnc=${cell.mnc}&lac=${cell.lac}&cid=${cell.cid}`
+        );
+        if (res.data.length) {
+          populateMap(cell, res.data);
+        } else {
+          alert("Nothing found");
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    });
+  </script>
+</html>
